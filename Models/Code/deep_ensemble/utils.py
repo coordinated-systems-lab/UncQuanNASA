@@ -90,7 +90,8 @@ def check_or_make_folder(folder_path):
 
 def plot_many(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground_truth: np.ndarray, no_of_outputs:int, file_name:str, save_dir:str=None):
 
-    no_of_inputs = np.linspace(0, stop=mu.shape[1], num=mu.shape[1])
+    no_of_inputs = np.linspace(0, stop=(mu.shape[1]-1), num=mu.shape[1], dtype=int)
+    labels = [r"$\Theta$[rad]", r"$\dot{\Theta}$[rad/s]", r"$x$[m]", r"$\dot{x}$[m/s]"]
 
     fig = plt.figure() 
 
@@ -110,17 +111,17 @@ def plot_many(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground
 
     for i in range(no_of_outputs):
         ax[i].fill_between(no_of_inputs, lower_mu[i,:].reshape(-1,), upper_mu[i,:].reshape(-1,), alpha=0.3)
-        k1, = ax[i].plot(no_of_inputs, mu[i,:].reshape(-1,), "k*-")
-        r1, = ax[i].plot(no_of_inputs, ground_truth[i,:].reshape(-1,), "r*-")
+        r1, = ax[i].plot(no_of_inputs, ground_truth[i,:].reshape(-1,), "r", marker='*', markersize=4)
+        k1, = ax[i].plot(no_of_inputs, mu[i,:].reshape(-1,), "k", markersize=6)
         ax[i].grid(True)
-        ax[0].set_ylabel('Predictions')
+        ax[i].set_ylabel(labels[i])
 
     ax[no_of_outputs-1].set_xlabel('Inputs')
-    ax[0].legend(('Confidence Interval', 'Predictions', 'Ground Truth'),\
+    ax[0].legend(('Confidence Interval', 'Ground Truth', 'Predictions'),\
                   bbox_to_anchor=(0,1.01,0.9,0.2), mode='expand', loc='lower center', ncol=4,\
                       borderaxespad=0, shadow=False)
     
-    main_dir = "../Results/"
+    main_dir = "./../../../Results/"
     if save_dir: 
         main_dir = main_dir + save_dir
 

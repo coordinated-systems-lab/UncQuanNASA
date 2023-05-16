@@ -6,10 +6,14 @@ import yaml
 from model import Ensemble
 from utils import plot_one, plot_many
 import sys
+import random
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def train(params: dict):
+
+    np.random.seed(params['seed'])
+    random.seed(params['seed'])
 
     orig_data = genfromtxt(params['data_dir'], delimiter=',')
     params['input_data'] = np.array(orig_data[:-1,:5])
@@ -26,14 +30,14 @@ def train(params: dict):
     if params['train_mode']:
         ensemble_ins.train_model(params['model_epochs'], save_model=True)
     if params['test_mode']:
-        ground_truth = ensemble_ins.output_data
+        ground_truth = ensemble_ins.rand_output_val
         ensemble_ins.load_model(params['load_model_dir'])
         for model_no, model in ensemble_ins.models.items():
             mu, logvar =  model.get_next_state_reward(ensemble_ins.rand_input_filtered_val, \
                                                       deterministic=True, return_mean=False) # normalized validation data
             mu_unnorm, upper_mu_unnorm, lower_mu_unnorm =  ensemble_ins.calculate_bounds(mu, logvar)
-            plot_many(mu_unnorm[:100], upper_mu_unnorm[:100], lower_mu_unnorm[:100],\
-                       ground_truth[:100], save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred.png")
+            plot_many(mu_unnorm.T, upper_mu_unnorm.T, lower_mu_unnorm.T, ground_truth.T,\
+                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred.png")
 
 
 

@@ -105,17 +105,18 @@ class Ensemble(object):
 
         ########## MIX VALIDATION AND TRAINING ##########
 
-        randperm = np.random.permutation(self.train_size + self.val_size)
+        #randperm = np.random.permutation(self.train_size + self.val_size)
+        randperm = np.linspace(0, stop=(input_filtered.shape[0]-1), num=input_filtered.shape[0], dtype=int)
         randperm_train, randperm_val = randperm[:self.train_size], randperm[self.train_size:]
 
-        self.rand_input_train = self.input_data[randperm,:]
-        self.rand_input_val = self.input_data[randperm,:]
-
-        rand_input_filtered_train = input_filtered[randperm_train,:]
-        self.rand_input_filtered_val = input_filtered[randperm_val,:]
+        self.rand_input_train = self.input_data[randperm_train,:]
+        self.rand_input_val = self.input_data[randperm_val,:]
 
         self.rand_output_train = self.output_data[randperm_train,:]
         self.rand_output_val = self.output_data[randperm_val,:]
+
+        rand_input_filtered_train = input_filtered[randperm_train,:]
+        self.rand_input_filtered_val = input_filtered[randperm_val,:]
 
         rand_delta_filtered_train = self.delta[randperm_train,:]
         self.rand_delta_filtered_val = self.delta[randperm_val,:]
@@ -161,7 +162,7 @@ class Ensemble(object):
             step = 0
             # value to shuffle dataloader rows by so each epoch each model sees different data
             perm = np.random.choice(self.num_models, size=self.num_models, replace=False)
-            for x_batch, diff_batch in self.transition_loader:  # state_action, delta
+            for x_batch, diff_batch in self.transition_loader:  
 
                 x_batch = x_batch[:, perm]
                 diff_batch = diff_batch[:, perm]
@@ -219,9 +220,11 @@ class Ensemble(object):
         Method to save model after training is completed
         """
         print("Saving model checkpoint...")
-        check_or_make_folder("./checkpoints")
-        check_or_make_folder("./checkpoints/model_saved_weights")
-        save_dir = "./checkpoints/model_saved_weights/{}".format(self._model_id)
+        check_or_make_folder("./../../learnedModels")
+        check_or_make_folder("./../../learnedModels/deep_ensemble")
+        check_or_make_folder("./../../learnedModels/deep_ensemble/checkpoints")
+        check_or_make_folder("./../../learnedModels/deep_ensemble/checkpoints/model_saved_weights")
+        save_dir = "./../../learnedModels/deep_ensemble/checkpoints/model_saved_weights/{}".format(self._model_id)
         check_or_make_folder(save_dir)
         # Create a dictionary with pytorch objects we need to save, starting with models
         torch_state_dict = {'model_{}_state_dict'.format(i): w for i, w in enumerate(self.current_best_weights)}
@@ -281,9 +284,9 @@ class Ensemble(object):
         upper_mu = upper_mu.detach().cpu().numpy()
         lower_mu = lower_mu.detach().cpu().numpy()
 
-        mu = mu + self.rand_input_val
-        upper_mu = upper_mu + self.rand_input_val
-        lower_mu = lower_mu + self.rand_input_val
+        mu = mu + self.rand_input_val[:,:4]
+        upper_mu = upper_mu + self.rand_input_val[:,:4]
+        lower_mu = lower_mu + self.rand_input_val[:,:4]
 
         return mu, upper_mu, lower_mu 
 

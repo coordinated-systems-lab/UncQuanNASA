@@ -6,6 +6,6 @@ args:
     model_lr: 0.001
     l2_reg_multiplier: 1 
     min_model_epochs: 0
-    train_mode: True
-    #test_mode: False
-    load_model_dir: "./checkpoints/model_saved_weights/Model_seed0_2023_05_01_02-20-22"
+    #train_mode: True
+    test_mode: True
+    load_model_dir: "./checkpoints/model_saved_weights/Model_seed0_2023_05_13_11-21-36"
