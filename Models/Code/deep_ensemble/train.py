@@ -30,16 +30,23 @@ def train(params: dict):
     if params['train_mode']:
         ensemble_ins.train_model(params['model_epochs'], save_model=True)
     if params['test_mode']:
-        ground_truth = ensemble_ins.rand_output_val
-        ensemble_ins.load_model(params['load_model_dir'])
+        ensemble_ins.load_model(params['load_model_dir']) # will reset val and train data 
         for model_no, model in ensemble_ins.models.items():
-            mu, logvar =  model.get_next_state_reward(ensemble_ins.rand_input_filtered_val, \
-                                                      deterministic=True, return_mean=False) # normalized validation data
-            mu_unnorm, upper_mu_unnorm, lower_mu_unnorm =  ensemble_ins.calculate_bounds(mu, logvar)
-            plot_many(mu_unnorm.T, upper_mu_unnorm.T, lower_mu_unnorm.T, ground_truth.T,\
-                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred.png")
+            if params['free_sim_mode']:
+                ground_truth = ensemble_ins.rand_output_val[-900:,:]
+                mu, upper_mu, lower_mu = model.get_next_state_reward_free_sim(ensemble_ins.rand_input_filtered_val[-900,:],\
+                                                            900, ensemble_ins.input_filter, ensemble_ins.rand_input_filtered_val)
+                plot_many(mu.T, upper_mu.T, lower_mu.T, ground_truth.T,\
+                       no_of_outputs=4, save_dir="deep_ensemble/multi_step_noisy1/", file_name=f"model_{model_no}_pred.png")
+            else:
+                ground_truth = ensemble_ins.rand_output_val[:2400,:]
+                mu, logvar =  model.get_next_state_reward_one_step(ensemble_ins.rand_input_filtered_val[:2400,:], \
+                                                        deterministic=True, return_mean=False) # normalized validation data
+                mu_unnorm, upper_mu_unnorm, lower_mu_unnorm =  ensemble_ins.calculate_bounds(mu, logvar)
+                plot_many(mu_unnorm.T, upper_mu_unnorm.T, lower_mu_unnorm.T, ground_truth.T,\
+                       no_of_outputs=4, save_dir="deep_ensemble/multi_step_noisy1/", file_name=f"model_{model_no}_pred.png")
 
-
+    return 
 
 def main():
     parser = argparse.ArgumentParser()
@@ -55,6 +62,7 @@ def main():
     parser.add_argument('--train_mode', type=bool, default=False)
     parser.add_argument('--test_mode', type=bool, default=False)
     parser.add_argument('--load_model_dir', type=str, default=None)
+    parser.add_argument('--free_sim_mode', type=str, default=None)
 
     args = parser.parse_args()
     params = vars(args)
