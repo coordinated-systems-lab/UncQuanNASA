@@ -17,6 +17,7 @@ import math
 import tabulate
 import datetime
 from utils import GaussianMSELoss, MeanStdevFilter, prepare_data, check_or_make_folder
+import pickle
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -83,8 +84,8 @@ class Ensemble(object):
         self.input_filter = MeanStdevFilter(self.input_dim) 
         #self.output_filter = MeanStdevFilter(self.output_dim)
 
-        self._model_id = "Model_seed{}_{}".format(params['seed'],\
-                                                datetime.datetime.now().strftime('%Y_%m_%d_%H-%M-%S'))
+        self._model_id = "Model_seed{}_{}_{}".format(params['seed'],\
+                                                datetime.datetime.now().strftime('%Y_%m_%d_%H-%M-%S'), 'noisyBigData')
 
     def calculate_mean_var(self):
 
@@ -115,16 +116,16 @@ class Ensemble(object):
         self.rand_output_train = self.output_data[randperm_train,:]
         self.rand_output_val = self.output_data[randperm_val,:]
 
-        rand_input_filtered_train = input_filtered[randperm_train,:]
+        self.rand_input_filtered_train = input_filtered[randperm_train,:]
         self.rand_input_filtered_val = input_filtered[randperm_val,:]
 
-        rand_delta_filtered_train = self.delta[randperm_train,:]
+        self.rand_delta_filtered_train = self.delta[randperm_train,:]
         self.rand_delta_filtered_val = self.delta[randperm_val,:]
 
         batch_size = 256
 
         self.transition_loader = DataLoader(
-            EnsembleTransitionDataset(rand_input_filtered_train, rand_delta_filtered_train, n_models=self.num_models),
+            EnsembleTransitionDataset(self.rand_input_filtered_train, self.rand_delta_filtered_train, n_models=self.num_models),
             shuffle=True,
             batch_size=batch_size,
             pin_memory=True
@@ -143,7 +144,7 @@ class Ensemble(object):
         self.current_best_losses = np.zeros(          # params['num_models'] = 7
             self.params['num_models']) + sys.maxsize  # weird hack (YLTSI), there's almost surely a better way...
         self.current_best_weights = [None] * self.params['num_models']
-        val_improve = deque(maxlen=6)
+        val_improve = deque(maxlen=15) #6 originally
         lr_lower = False
         min_model_epochs = 0 if not min_model_epochs else min_model_epochs
 
@@ -154,7 +155,7 @@ class Ensemble(object):
         model_idx = 0
         print('Epoch: %s, Total Loss: N/A' % (0))
         print('Validation Losses:')
-        #print('\t'.join('M{}: {}'.format(i, loss) for i, loss in enumerate(iter_best_loss)))
+        print('\t'.join('M{}: {}'.format(i, loss) for i, loss in enumerate(iter_best_loss)))
         for i in range(max_epochs):  # 1000
             t0 = time.time()
             total_loss = 0
@@ -193,8 +194,7 @@ class Ensemble(object):
                     epoch_diff = i + 1 - best_epoch
                     plural = 's' if epoch_diff > 1 else ''
                     print('No improvement detected this epoch: {} Epoch{} since last improvement.'.format(epoch_diff,plural))
-                                                                                          
-                if len(val_improve) > 5:
+                if len(val_improve) > 14:
                     if not any(np.array(val_improve)[1:]):  # If no improvement in the last 5 epochs
                         # assert val_improve[0]
                         if (i >= min_model_epochs):
@@ -233,11 +233,22 @@ class Ensemble(object):
         torch_state_dict['logvar_max'] = self.max_logvar
         # Save Torch files
         torch.save(torch_state_dict, save_dir + "/torch_model_weights.pt")
+        # saving train and val data
+        print("Saving train and val data...")           
+        data_state_dict = {'train_input_data': self.rand_input_filtered_train, 
+                           'val_input_data': self.rand_input_filtered_val,
+                           'train_out_data': self.rand_delta_filtered_train,
+                           'val_out_data': self.rand_delta_filtered_val,
+                           'input_filter': self.input_filter}   
+        pickle.dump(data_state_dict, open(save_dir + '/model_data.pkl', 'wb'))
 
     def check_validation_losses(self, validation_loader):
         improved_any = False
         current_losses, current_weights = self._get_validation_losses(validation_loader, get_weights=True)
+        #print(f"Iter Best Loss: {current_losses}")
+        #print(f"Current Best Losses: {self.current_best_losses}")
         improvements = ((self.current_best_losses - current_losses) / self.current_best_losses) > 0.01
+        #print(f"Improvements :{improvements}")
         for i, improved in enumerate(improvements):
             if improved:
                 self.current_best_losses[i] = current_losses[i]
@@ -267,6 +278,31 @@ class Ensemble(object):
             self.models[i].load_state_dict(torch_state_dict['model_{}_state_dict'.format(i)])
         self.min_logvar = torch_state_dict['logvar_min']
         self.max_logvar = torch_state_dict['logvar_max']
+        # loading train and val data     
+        data_state_dict = pickle.load(open(model_dir + '/model_data.pkl', 'rb'))
+        self.rand_input_filtered_train = data_state_dict['train_input_data']
+        self.rand_input_filtered_val = data_state_dict['val_input_data']
+        self.rand_delta_filtered_train = data_state_dict['train_out_data']
+        self.rand_delta_filtered_val = data_state_dict['val_out_data'] 
+        self.input_filter = data_state_dict['input_filter']
+        # reinitialize the train and val loaders 
+        batch_size = 256
+
+        self.transition_loader = DataLoader(
+            EnsembleTransitionDataset(self.rand_input_filtered_train, self.rand_delta_filtered_train, n_models=self.num_models),
+            shuffle=True,
+            batch_size=batch_size,
+            pin_memory=True
+        )
+        
+        validate_dataset = TransitionDataset(self.rand_input_filtered_val, self.rand_delta_filtered_val)
+        sampler = SequentialSampler(validate_dataset)
+        self.validation_loader = DataLoader(
+            validate_dataset,
+            sampler=sampler,
+            batch_size=batch_size,
+            pin_memory=True
+        )
 
     def calculate_bounds(self, mu:torch.Tensor, logvar:torch.Tensor):
         """
@@ -284,9 +320,9 @@ class Ensemble(object):
         upper_mu = upper_mu.detach().cpu().numpy()
         lower_mu = lower_mu.detach().cpu().numpy()
 
-        mu = mu + self.rand_input_val[:,:4]
-        upper_mu = upper_mu + self.rand_input_val[:,:4]
-        lower_mu = lower_mu + self.rand_input_val[:,:4]
+        mu = mu + self.rand_input_val[:mu.shape[0],:4]
+        upper_mu = upper_mu + self.rand_input_val[:mu.shape[0],:4]
+        lower_mu = lower_mu + self.rand_input_val[:mu.shape[0],:4]
 
         return mu, upper_mu, lower_mu 
 
@@ -306,9 +342,20 @@ class Model(nn.Module):
     def forward(self, x: torch.Tensor):
         return self.model(x)
 
-    def get_next_state_reward(self, input: torch.Tensor, deterministic=False, return_mean=False):
-        return self.model.get_next_state_reward(input, deterministic, return_mean) 
+    def get_next_state_reward_one_step(self, input: torch.Tensor, deterministic=False, return_mean=False):
+        return self.model.get_next_state_reward_one_step(input, deterministic, return_mean) 
 
+    def get_next_state_reward_free_sim(self, input: torch.Tensor, steps:int, input_filter:MeanStdevFilter, full_input:torch.Tensor, deterministic=True, return_mean=False):
+        """
+        input: Initial state to start free simulation 
+        steps: No of time steps to simulation aka rollout horizon    
+        input_filter: To feed standardize data at next time-step
+        full_input: To extract control inputs for rollout horizon    
+        deterministic: True should be preferable 
+        return_mean: False if deterministic is True  
+        """
+        return self.model.get_next_state_reward_free_sim(input, steps, input_filter, full_input, deterministic, return_mean) 
+    
     def _train_model_forward(self, x_batch):
         self.model.train()    # TRAINING MODE
         self.model.zero_grad()
@@ -328,7 +375,7 @@ class Model(nn.Module):
         preds, targets = [], []
         with torch.no_grad():
             for x_batch_val, delta_batch_val in data_loader:
-                x_batch_val, delta_batch_val= x_batch_val.to(device, non_blocking=True),\
+                x_batch_val, delta_batch_val = x_batch_val.to(device, non_blocking=True),\
                                                 delta_batch_val.to(device, non_blocking=True)
                 y_pred_val = self.forward(x_batch_val)
                 preds.append(y_pred_val)
@@ -421,7 +468,7 @@ class BayesianNeuralNetwork(nn.Module):
 
         return torch.cat((delta, logvar), dim=1)
 
-    def get_next_state_reward(self, input: torch.Tensor, deterministic=False, return_mean=False):
+    def get_next_state_reward_one_step(self, input: torch.Tensor, deterministic=False, return_mean=False):
         input_torch = torch.FloatTensor(input).to(device)
         mu, logvar = self.forward(input_torch).chunk(2, dim=1)
         mu_orig = mu
@@ -434,8 +481,64 @@ class BayesianNeuralNetwork(nn.Module):
             mu = torch.cat((mu, mu_orig), dim=1)
 
         return mu, logvar
+    
+    def get_next_state_reward_free_sim(self, input:torch.Tensor, steps:int, input_filter:MeanStdevFilter,\
+                                        full_input:torch.Tensor, deterministic=True, return_mean=False): # aka multi-step transition 
+        input = input.reshape(1,-1)
+        mu = np.zeros((steps, input.shape[1]-1)) # we are not predicting control input so -1
+        upper_mu = np.zeros((steps, input.shape[1]-1))
+        lower_mu = np.zeros((steps, input.shape[1]-1))
+        mu_orig = torch.zeros(steps, input.shape[1]-1, device=device)
+        input_torch = torch.FloatTensor(input).to(device)
+        full_input_torch = torch.FloatTensor(full_input).to(device)
 
+        for step in range(steps):
 
+            delta, logvar = self.forward(input_torch).chunk(2, dim=1)
+            input_unnorm = input_filter.invert_torch(input_torch)
+            delta_orig = delta
+
+            if not deterministic:
+                dist = torch.distributions.Normal(delta, logvar.exp().sqrt())
+                delta = dist.sample()
+
+            # return unnormalized upper and lower bounds along with mu 
+            mu[step,:], upper_mu[step,:], lower_mu[step,:] = self.calculate_bounds(delta, logvar, input_unnorm)
+    
+            if return_mean:
+                mu_orig[step,:] = delta_orig + input_unnorm[:,:4]
+
+            next_state_norm = input_filter.filter_torch(delta + input_unnorm[:,:4])
+            input_torch = torch.cat((next_state_norm, full_input_torch[-900+step+1,4].reshape(1,-1)), dim=1)
+
+        if return_mean:
+            mu_orig = mu_orig.detach().cpu().numpy()
+            return (mu, mu_orig), upper_mu, lower_mu    
+
+        return mu, upper_mu, lower_mu
+    
+    def calculate_bounds(self, delta:torch.Tensor, logvar:torch.Tensor, input_unnorm:torch.Tensor):
+        """
+        mu: unnormalized delta predictions in tensor
+        logvar: predicted logvar in tensor
+        """
+        if len(delta.shape) == 1:
+            delta = delta.reshape(1,-1)
+            logvar = logvar.reshape(1,-1)
+
+        upper_delta =  delta + torch.mul(logvar.exp().sqrt(), 1.96)
+        lower_delta =  delta - torch.mul(logvar.exp().sqrt(), 1.96)
+
+        delta = delta.detach().cpu().numpy()
+        upper_delta = upper_delta.detach().cpu().numpy()
+        lower_delta = lower_delta.detach().cpu().numpy()
+        input_unnorm = input_unnorm.detach().cpu().numpy()
+
+        mu = delta + input_unnorm[:,:4]
+        upper_mu = upper_delta + input_unnorm[:,:4]
+        lower_mu = lower_delta + input_unnorm[:,:4]
+
+        return mu, upper_mu, lower_mu 
 
 def reinitialize_fc_layer_(fc_layer):
     """
