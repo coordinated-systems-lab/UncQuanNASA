@@ -1,6 +1,6 @@
 """Adapted from https://github.com/microsoft/LightGBM/issues/5727#issue-1589436779"""
 
-from typing import Iterable, List, Union, Tuple
+from typing import Any, Iterable, List, Union, Tuple
 from functools import partial
 
 import numpy as np
@@ -8,11 +8,8 @@ import numpy as np
 import lightgbm as lgb
 
 import pandas as pd
-import optuna
 import pynumdiff
 import pynumdiff.optimize
-
-from sklearn.model_selection import train_test_split
 
 
 def _calc_tvgamma(freq: float, dt: float):
@@ -22,7 +19,7 @@ def _calc_tvgamma(freq: float, dt: float):
 
 def smooth_series(
     x: np.ndarray, dt: float, freq: float
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     # Calculate optimal parameter for optimization
     tvgamma = _calc_tvgamma(freq, dt)
 
@@ -38,7 +35,7 @@ def smooth_series(
     )
 
     # return ddxdt_hat
-    return x_hat[1:-1] - x_hat[:-2], dxdt_hat_hat[2:] - dxdt_hat_hat[1:-1]
+    return x_hat[1:-1], x_hat[1:-1] - x_hat[:-2], dxdt_hat_hat[2:] - dxdt_hat_hat[1:-1]
 
 
 def check_loss_grad_hess(
@@ -48,74 +45,6 @@ def check_loss_grad_hess(
     grad = (y_pred > y_train).astype(int) - alphas
     hess = np.ones(y_train.shape)
     return grad, hess
-
-
-def pinball_metric(
-    preds: np.ndarray, eval_data: lgb.Dataset
-) -> Tuple[str, float, bool]:
-    # Get alpha values
-    alphas = eval_data.get_data()[:, -1]
-
-    # Calculate loss
-    u = eval_data.get_label() - preds
-    result = (u * (alphas - (u < 0).astype(int))).mean()
-
-    return ("pinball", result, False)
-
-
-def objective(trial, data: lgb.Dataset):
-    # Get datasets out
-    X = data.get_data()
-    y = data.get_label()
-
-    # Split train test randomly
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
-
-    # Redefine lgb datasets
-    dtrain = lgb.Dataset(X_train, label=y_train, free_raw_data=False)
-    dtest = lgb.Dataset(X_test, label=y_test, free_raw_data=False).construct()
-
-    param = {
-        "verbosity": -1,
-        "boosting_type": "gbdt",
-        "metric": "pinball",
-        "num_iterations": trial.suggest_int("num_iterations", 1000, 1000),
-        "learning_rate": trial.suggest_float("learning_rate", 1e-3, 1e-3),
-        # "early_stopping_round": trial.suggest_int("use_early_stopping", 0, 0)
-        # * trial.suggest_int("early_stopping_round", 1, 100),
-        # "lambda_l1": trial.suggest_float("lambda_l1", 1e-8, 10.0, log=True),
-        # "lambda_l2": trial.suggest_float("lambda_l2", 1e-8, 10.0, log=True),
-        # "num_leaves": trial.suggest_int("num_leaves", 2, 512),
-        # "feature_fraction": trial.suggest_float("feature_fraction", 0.1, 1.0),
-        # "bagging_fraction": trial.suggest_float("bagging_fraction", 0.8, 1.0),
-        # "bagging_freq": trial.suggest_int("bagging_freq", 1, 7),
-        # "min_child_samples": trial.suggest_int("min_child_samples", 1, 100),
-        "mc": [0 for _ in range(X.shape[1] - 1)] + [1],
-    }
-
-    # Add a callback for pruning.
-    pruning_callback = optuna.integration.LightGBMPruningCallback(trial, "pinball")
-    gbm = lgb.train(
-        param,
-        dtrain,
-        valid_sets=[dtest],
-        callbacks=[pruning_callback],
-        fobj=partial(check_loss_grad_hess, alphas=X_train[:, -1]),
-        feval=pinball_metric,
-    )
-
-    # Save booster
-    trial.set_user_attr(key="best_booster", value=gbm)
-
-    # Return performance
-    preds = gbm.predict(X_test)
-    _, perf, _ = pinball_metric(preds, dtest)
-    return perf
-
-
-def save_best_model(study, trial):
-    if study.best_trial.number == trial.number:
-        study.set_user_attr(key="best_booster", value=trial.user_attrs["best_booster"])
 
 
 def _feature_transform(x: Union[pd.DataFrame, pd.Series, np.ndarray]) -> np.ndarray:
@@ -149,7 +78,9 @@ class QuantileRegressionSimulator:
         n_diff: int,
         dt: float,
         freq: float,
+        model_params: dict[str, Any],
         random_state: Union[int, None] = None,
+        seq_id: Union[pd.Series, np.ndarray, None] = None,
     ):
         self.n_feat = x.shape[1]
 
@@ -157,13 +88,30 @@ class QuantileRegressionSimulator:
         x = _feature_transform(x)
 
         # Smooth target and 2nd derivatives
-        self.y_all = np.zeros((x.shape[0] - 2, self.n_feat))
-        x_ = np.zeros((x.shape[0] - 2, self.n_feat))
-        for i in range(self.n_feat):
-            x_[:, i], self.y_all[:, i] = smooth_series(x[:, i], dt=dt, freq=freq)
+        if seq_id is None:
+            seq_id = np.zeros(x.shape[0])
 
-        x = x[1:-1, :]
-        x = np.hstack((x, x_))
+        x_list, d1_list, d2_list, resid_list = [], [], [], []
+        for id in np.unique(seq_id):
+            mask = seq_id == id
+            n = mask.sum()
+
+            x_hat = np.zeros((n - 2, self.n_feat))
+            d1 = np.zeros((n - 2, self.n_feat))
+            d2 = np.zeros((n - 2, self.n_feat))
+            for i in range(self.n_feat):
+                x_hat[:, i], d1[:, i], d2[:, i] = smooth_series(
+                    x[mask, i], dt=dt, freq=freq
+                )
+
+            resid_list.append(x[mask, :][1:-1, :] - x_hat)
+            x_list.append(x[mask, :][1:-1, :])
+            d1_list.append(d1)
+            d2_list.append(d2)
+
+        x = np.hstack((np.vstack(x_list), np.vstack(d1_list)))
+        self.resids = np.vstack(resid_list)
+        self.d2 = np.vstack(d2_list)
 
         # Get bootstrapped rows
         self.rng = np.random.default_rng(random_state)
@@ -172,7 +120,7 @@ class QuantileRegressionSimulator:
 
         # reindex, add alphas
         self.x_train = x[idx, :]
-        self.y_train = self.y_all[idx, :]
+        self.y_train = self.d2[idx, :]
         alphas = self.rng.uniform(size=(n, 1))
         self.x_train = np.hstack((self.x_train, alphas))
 
@@ -193,32 +141,25 @@ class QuantileRegressionSimulator:
         self.n_diff = n_diff
         self.dt = dt
         self.freq = freq
+        self.model_params = model_params
 
     def train(self) -> List[lgb.Booster]:
         self.models = []
         for i in range(len(self.datasets)):
-            print(f"Running hyperparameter tuning for model {i + 1}...")
+            # Get datasets out
+            X = self.datasets[i].get_data()
+            y = self.datasets[i].get_label()
 
-            # Old way
-            curr_obj = partial(objective, data=self.datasets[i])
-            study = optuna.create_study(
-                direction="minimize",
-                pruner=optuna.pruners.MedianPruner(n_warmup_steps=5),
+            # Train data
+            dtrain = lgb.Dataset(X, label=y, free_raw_data=False)
+
+            # Train model
+            gbm = lgb.train(
+                self.model_params,
+                dtrain,
+                fobj=partial(check_loss_grad_hess, alphas=X[:, -1]),
             )
-            study.optimize(curr_obj, n_trials=1, callbacks=[save_best_model])
-
-            # Results
-            print("Number of finished trials: {}".format(len(study.trials)))
-
-            print("Best trial:")
-            trial = study.best_trial
-
-            print("  Value: {}".format(trial.value))
-
-            print("  Params: ")
-            for key, value in trial.params.items():
-                print("    {}: {}".format(key, value))
-            self.models.append(study.user_attrs["best_booster"])
+            self.models.append(gbm)
 
         return self.models
 
@@ -241,7 +182,7 @@ class QuantileRegressionSimulator:
         if smooth:
             x_ = np.zeros((x.shape[0], self.n_feat))
             for i in range(self.n_feat):
-                x_[1:-1, i], _ = smooth_series(x[:, i], self.dt, self.freq)
+                _, x_[1:-1, i], _ = smooth_series(x[:, i], self.dt, self.freq)
             x = np.hstack((x, x_))
 
         # Make predictions
@@ -293,4 +234,11 @@ class QuantileRegressionSimulator:
                 curr_pos[: self.n_feat] += curr_der1
                 # prev_pos = hold_for_prev_pos
                 curr_pos[self.n_feat:] = curr_der1.copy()
+
+        # Add back in noise
+        for j in range(preds.shape[1]):
+            preds[:, j] += self.rng.choice(
+                self.resids[:, j], size=preds.shape[0], replace=True
+            )
+
         return preds
