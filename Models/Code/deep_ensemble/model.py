@@ -85,7 +85,7 @@ class Ensemble(object):
         #self.output_filter = MeanStdevFilter(self.output_dim)
 
         self._model_id = "Model_seed{}_{}_{}".format(params['seed'],\
-                                                datetime.datetime.now().strftime('%Y_%m_%d_%H-%M-%S'), 'noisyBigData')
+                                                datetime.datetime.now().strftime('%Y_%m_%d_%H-%M-%S'), 'noisyInputBigData')
 
     def calculate_mean_var(self):
 
@@ -144,7 +144,7 @@ class Ensemble(object):
         self.current_best_losses = np.zeros(          # params['num_models'] = 7
             self.params['num_models']) + sys.maxsize  # weird hack (YLTSI), there's almost surely a better way...
         self.current_best_weights = [None] * self.params['num_models']
-        val_improve = deque(maxlen=15) #6 originally
+        val_improve = deque(maxlen=14) #6 originally
         lr_lower = False
         min_model_epochs = 0 if not min_model_epochs else min_model_epochs
 
@@ -194,7 +194,7 @@ class Ensemble(object):
                     epoch_diff = i + 1 - best_epoch
                     plural = 's' if epoch_diff > 1 else ''
                     print('No improvement detected this epoch: {} Epoch{} since last improvement.'.format(epoch_diff,plural))
-                if len(val_improve) > 14:
+                if len(val_improve) > 13:
                     if not any(np.array(val_improve)[1:]):  # If no improvement in the last 5 epochs
                         # assert val_improve[0]
                         if (i >= min_model_epochs):
@@ -509,7 +509,7 @@ class BayesianNeuralNetwork(nn.Module):
                 mu_orig[step,:] = delta_orig + input_unnorm[:,:4]
 
             next_state_norm = input_filter.filter_torch(delta + input_unnorm[:,:4])
-            input_torch = torch.cat((next_state_norm, full_input_torch[-900+step+1,4].reshape(1,-1)), dim=1)
+            input_torch = torch.cat((next_state_norm, full_input_torch[0+step+1,4].reshape(1,-1)), dim=1)
 
         if return_mean:
             mu_orig = mu_orig.detach().cpu().numpy()

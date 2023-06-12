@@ -117,7 +117,7 @@ def plot_many(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground
         ax[i].set_ylabel(labels[i])
 
     ax[no_of_outputs-1].set_xlabel('Inputs')
-    ax[0].legend(('Ground Truth', 'Predictions', 'Confidence Interval'),\
+    ax[0].legend(('Confidence Interval', 'Ground Truth', 'Predictions'),\
                   bbox_to_anchor=(0,1.01,0.9,0.2), mode='expand', loc='lower center', ncol=4,\
                       borderaxespad=0, shadow=False)
     

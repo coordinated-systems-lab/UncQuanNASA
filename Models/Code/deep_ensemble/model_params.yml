@@ -1,12 +1,12 @@
 args:
     seed: 0
-    data_dir: "../../../Data/noisyCase/noisyBigData.csv"
+    data_dir: "../../../Data/noisyCase/noisyInputBigData.csv"
     num_models: 7
-    model_epochs: 1000
+    model_epochs: 2000
     model_lr: 0.001
     l2_reg_multiplier: 1 
     min_model_epochs: 0
-    #train_mode: True
-    test_mode: True
+    train_mode: True
+    #test_mode: True
     load_model_dir: "./../../learnedModels/deep_ensemble/checkpoints/model_saved_weights/Model_seed0_2023_05_27_20-31-51_noisyBigData"
     free_sim_mode: True 
