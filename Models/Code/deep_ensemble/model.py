@@ -304,7 +304,7 @@ class Ensemble(object):
             pin_memory=True
         )
 
-    def calculate_bounds(self, mu:torch.Tensor, logvar:torch.Tensor):
+    def calculate_bounds(self, mu:torch.Tensor, logvar:torch.Tensor, start: int, end: int):
         """
         mu: unnormalized predictions in tensor
         logvar: predicted logvar in tensor
@@ -320,9 +320,9 @@ class Ensemble(object):
         upper_mu = upper_mu.detach().cpu().numpy()
         lower_mu = lower_mu.detach().cpu().numpy()
 
-        mu = mu + self.rand_input_val[:mu.shape[0],:4]
-        upper_mu = upper_mu + self.rand_input_val[:mu.shape[0],:4]
-        lower_mu = lower_mu + self.rand_input_val[:mu.shape[0],:4]
+        mu = mu + self.rand_input_val[start:end,:4]
+        upper_mu = upper_mu + self.rand_input_val[start:end,:4]
+        lower_mu = lower_mu + self.rand_input_val[start:end,:4]
 
         return mu, upper_mu, lower_mu 
 
@@ -345,7 +345,8 @@ class Model(nn.Module):
     def get_next_state_reward_one_step(self, input: torch.Tensor, deterministic=False, return_mean=False):
         return self.model.get_next_state_reward_one_step(input, deterministic, return_mean) 
 
-    def get_next_state_reward_free_sim(self, input: torch.Tensor, steps:int, input_filter:MeanStdevFilter, full_input:torch.Tensor, deterministic=True, return_mean=False):
+    def get_next_state_reward_free_sim(self, input: torch.Tensor, start :int, steps:int, input_filter:MeanStdevFilter,\
+                                        full_input:torch.Tensor, deterministic=True, return_mean=False):
         """
         input: Initial state to start free simulation 
         steps: No of time steps to simulation aka rollout horizon    
@@ -354,7 +355,7 @@ class Model(nn.Module):
         deterministic: True should be preferable 
         return_mean: False if deterministic is True  
         """
-        return self.model.get_next_state_reward_free_sim(input, steps, input_filter, full_input, deterministic, return_mean) 
+        return self.model.get_next_state_reward_free_sim(input, start, steps, input_filter, full_input, deterministic, return_mean) 
     
     def _train_model_forward(self, x_batch):
         self.model.train()    # TRAINING MODE
@@ -482,7 +483,7 @@ class BayesianNeuralNetwork(nn.Module):
 
         return mu, logvar
     
-    def get_next_state_reward_free_sim(self, input:torch.Tensor, steps:int, input_filter:MeanStdevFilter,\
+    def get_next_state_reward_free_sim(self, input:torch.Tensor, start :int, steps:int, input_filter:MeanStdevFilter,\
                                         full_input:torch.Tensor, deterministic=True, return_mean=False): # aka multi-step transition 
         input = input.reshape(1,-1)
         mu = np.zeros((steps, input.shape[1]-1)) # we are not predicting control input so -1
@@ -509,7 +510,7 @@ class BayesianNeuralNetwork(nn.Module):
                 mu_orig[step,:] = delta_orig + input_unnorm[:,:4]
 
             next_state_norm = input_filter.filter_torch(delta + input_unnorm[:,:4])
-            input_torch = torch.cat((next_state_norm, full_input_torch[0+step+1,4].reshape(1,-1)), dim=1)
+            input_torch = torch.cat((next_state_norm, full_input_torch[start+step+1,4].reshape(1,-1)), dim=1)
 
         if return_mean:
             mu_orig = mu_orig.detach().cpu().numpy()

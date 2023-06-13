@@ -33,18 +33,22 @@ def train(params: dict):
         ensemble_ins.load_model(params['load_model_dir']) # will reset val and train data 
         for model_no, model in ensemble_ins.models.items():
             if params['free_sim_mode']:
-                ground_truth = ensemble_ins.rand_output_val[-900:,:]
-                mu, upper_mu, lower_mu = model.get_next_state_reward_free_sim(ensemble_ins.rand_input_filtered_val[0,:],\
-                                                            900, ensemble_ins.input_filter, ensemble_ins.rand_input_filtered_val)
+                start = 10000
+                steps = 1000
+                ground_truth = ensemble_ins.rand_output_val[start:start+steps,:]
+                mu, upper_mu, lower_mu = model.get_next_state_reward_free_sim(ensemble_ins.rand_input_filtered_val[start,:], start,\
+                                                            steps, ensemble_ins.input_filter, ensemble_ins.rand_input_filtered_val)
                 plot_many(mu.T, upper_mu.T, lower_mu.T, ground_truth.T,\
-                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred.png")
+                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred_{start}_{start+steps}_multistep.png")
             else:
-                ground_truth = ensemble_ins.rand_output_val[:2400,:]
-                mu, logvar =  model.get_next_state_reward_one_step(ensemble_ins.rand_input_filtered_val[:2400,:], \
+                start = 10000
+                steps = 1000
+                ground_truth = ensemble_ins.rand_output_val[start:start+steps,:]
+                mu, logvar =  model.get_next_state_reward_one_step(ensemble_ins.rand_input_filtered_val[start:start+steps,:], \
                                                         deterministic=True, return_mean=False) # normalized validation data
-                mu_unnorm, upper_mu_unnorm, lower_mu_unnorm =  ensemble_ins.calculate_bounds(mu, logvar)
+                mu_unnorm, upper_mu_unnorm, lower_mu_unnorm =  ensemble_ins.calculate_bounds(mu, logvar, start, start+steps)
                 plot_many(mu_unnorm.T, upper_mu_unnorm.T, lower_mu_unnorm.T, ground_truth.T,\
-                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred.png")
+                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred_{start}_{start+steps}_onestep.png")
 
     return 
 
