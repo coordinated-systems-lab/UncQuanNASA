@@ -131,7 +131,7 @@ class Ensemble(object):
             pin_memory=True
         )
         
-        validate_dataset = TransitionDataset(self.rand_input_filtered_val, self.rand_delta_filtered_val)
+        validate_dataset = TransitionDataset(self.rand_input_filtered_val[-1000:], self.rand_delta_filtered_val[-1000:])
         sampler = SequentialSampler(validate_dataset)
         self.validation_loader = DataLoader(
             validate_dataset,
@@ -144,7 +144,7 @@ class Ensemble(object):
         self.current_best_losses = np.zeros(          # params['num_models'] = 7
             self.params['num_models']) + sys.maxsize  # weird hack (YLTSI), there's almost surely a better way...
         self.current_best_weights = [None] * self.params['num_models']
-        val_improve = deque(maxlen=14) #6 originally
+        val_improve = deque(maxlen=131) #6 originally
         lr_lower = False
         min_model_epochs = 0 if not min_model_epochs else min_model_epochs
 
@@ -194,7 +194,7 @@ class Ensemble(object):
                     epoch_diff = i + 1 - best_epoch
                     plural = 's' if epoch_diff > 1 else ''
                     print('No improvement detected this epoch: {} Epoch{} since last improvement.'.format(epoch_diff,plural))
-                if len(val_improve) > 13:
+                if len(val_improve) > 130:
                     if not any(np.array(val_improve)[1:]):  # If no improvement in the last 5 epochs
                         # assert val_improve[0]
                         if (i >= min_model_epochs):
