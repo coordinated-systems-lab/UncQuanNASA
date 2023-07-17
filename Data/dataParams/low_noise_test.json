@@ -1,0 +1,27 @@
+{
+    "name": "low_noise",
+    "de_params": {
+        "mc": 1.0,
+        "mp": 0.1,
+        "len": 0.5,
+        "mu_c": 5e-05,
+        "mu_p": 2e-06,
+        "k": 0.3333333333333333,
+        "f": "lambda x: -4 * np.cos(4.5 * x)"
+    },
+    "tspan": [
+        0,
+        200
+    ],
+    "X0": [
+        -0.1,
+        -3.0,
+        0.0,
+        0.15
+    ],
+    "dt": 0.01,
+    "noise_gen": "normal",
+    "noise_params": {
+        "scale": 0.05
+    }
+}
