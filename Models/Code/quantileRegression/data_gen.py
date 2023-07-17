@@ -4,7 +4,7 @@ from scipy.integrate import solve_ivp
 from typing import Any
 
 
-def cartpole(t, u: list[float], p: dict[str, Any]):
+def cartpole(t: float, u: list[float], p: dict[str, Any]):
     # u = [theta, theta_d, x, x_d]
 
     # Parameters
@@ -60,6 +60,8 @@ def gen_cartpole_data(
     X0: list[tuple] | tuple,
     noise_gen: list[str] | str,
     noise_params: list[dict] | dict,
+    random_state: int | None = None,
+    **kwargs,
 ):
     # Preprocessing
     try:
@@ -79,7 +81,7 @@ def gen_cartpole_data(
     noise_params = _check_list(noise_params, max_len=max_len)
 
     # Prepare for dataset creation
-    rng = np.random.default_rng(5)
+    rng = np.random.default_rng(random_state)
     data_list, true_data_list = [], []
     nsets = len(de_params)
 
@@ -103,4 +105,20 @@ def gen_cartpole_data(
         data["set_id"], true_data["set_id"] = i, i
         data_list.append(data)
         true_data_list.append(true_data)
-    return pd.concat(data_list), pd.concat(true_data_list)
+
+    # Add true second derivative to true data
+    true_data = pd.concat(true_data_list).reset_index(drop=True)
+    true_data_d = pd.DataFrame(
+        [
+            cartpole(
+                row.t,
+                [row.theta, row.theta_d, row.x, row.x_d],
+                p=de_params[int(row.set_id)],
+            )
+            for _, row in true_data.iterrows()
+        ],
+        columns=["theta_d", "theta_dd", "x_d", "x_dd"],
+    )
+    true_data = pd.concat([true_data, true_data_d[["theta_dd", "x_dd"]]], axis=1)
+
+    return pd.concat(data_list), true_data
