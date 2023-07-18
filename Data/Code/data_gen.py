@@ -128,7 +128,7 @@ if __name__ == "__main__":
             "k": 1 / 3,
             "f": lambda x: 5 * np.sin(6 * x),
         },
-        "tspan": (0, 500),
+        "tspan": (0, 600),
         "X0": (0.3, 1.0, 0.0, -0.72),  # theta, theta_d, x, x_d
         "dt": 0.01,
         "noise_gen": "normal",
@@ -166,8 +166,8 @@ if __name__ == "__main__":
         data, _ = gen_cartpole_data(**params)
 
         # Save train and validation
-        data.loc[:400].to_csv(f"../cartpoleData/{name}_train.csv")
-        data.loc[400:].to_csv(f"../cartpoleData/{name}_val.csv")
+        data.loc[:500].to_csv(f"../cartpoleData/{name}_train.csv")
+        data.loc[500:].to_csv(f"../cartpoleData/{name}_val.csv")
 
         # Save parameters
         ser_params = make_serializable({"name": name} | params)
