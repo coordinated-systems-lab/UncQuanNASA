@@ -72,6 +72,7 @@ def _add_second_derivative(df: pd.DataFrame, de_params: dict) -> pd.DataFrame:
             for idx, row in df.iterrows()
         ],
         columns=["theta_d", "theta_dd", "x_d", "x_dd"],
+        index=df.index
     )
 
     return pd.concat([df, df_d[["theta_dd", "x_dd"]]], axis=1)
@@ -90,7 +91,7 @@ def gen_cartpole_data(
     rng = np.random.default_rng(random_state)
 
     # time variable
-    t = np.linspace(*tspan, round(tspan[1] / dt))
+    t = np.linspace(*tspan, round(tspan[1] / dt) + 1)
 
     # Solve IVP
     res = solve_ivp(cartpole, tspan, X0, args=[de_params], dense_output=True)
@@ -101,6 +102,8 @@ def gen_cartpole_data(
     data = pd.DataFrame(data, columns=["theta", "theta_d", "x", "x_d"])
     true_data = pd.DataFrame(sol_data, columns=["theta", "theta_d", "x", "x_d"])
     data.index, true_data.index = t, t
+    data.index.name = "t"
+    true_data.index.name = "t"
 
     # Add second derivatives
     data = _add_second_derivative(data, de_params=de_params)
