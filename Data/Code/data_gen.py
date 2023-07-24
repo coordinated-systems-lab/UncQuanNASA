@@ -72,7 +72,7 @@ def _add_second_derivative(df: pd.DataFrame, de_params: dict) -> pd.DataFrame:
             for idx, row in df.iterrows()
         ],
         columns=["theta_d", "theta_dd", "x_d", "x_dd"],
-        index=df.index
+        index=df.index,
     )
 
     return pd.concat([df, df_d[["theta_dd", "x_dd"]]], axis=1)
@@ -99,9 +99,10 @@ def gen_cartpole_data(
 
     # Add noise
     data = sol_data + getattr(rng, noise_gen)(size=sol_data.shape, **noise_params)
-    data = pd.DataFrame(data, columns=["theta", "theta_d", "x", "x_d"])
-    true_data = pd.DataFrame(sol_data, columns=["theta", "theta_d", "x", "x_d"])
-    data.index, true_data.index = t, t
+    data = pd.DataFrame(data, columns=["theta", "theta_d", "x", "x_d"], index=t)
+    true_data = pd.DataFrame(
+        sol_data, columns=["theta", "theta_d", "x", "x_d"], index=t
+    )
     data.index.name = "t"
     true_data.index.name = "t"
 
