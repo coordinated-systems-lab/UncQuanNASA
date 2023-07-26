@@ -4,7 +4,7 @@ import torch
 import argparse
 import yaml
 from model import Ensemble
-from utils import plot_one, plot_many
+from utils import plot_one, plot_many, read_test_csv
 import sys
 import random
 
@@ -15,9 +15,13 @@ def train(params: dict):
     np.random.seed(params['seed'])
     random.seed(params['seed'])
 
-    orig_data = genfromtxt(params['data_dir'], delimiter=',')
-    params['input_data'] = np.array(orig_data[:-1,:5])
-    params['output_data'] = np.array(orig_data[1:,:4])
+    orig_data = genfromtxt(params['data_dir'], delimiter=',', skip_header=1, usecols=(1,2,3,4,7))
+
+    np_orig_data = np.array(orig_data)
+    np_orig_data[:,0] = np.mod(np_orig_data[:,0], 2*np.pi)
+
+    params['input_data'] = np_orig_data[:-1,:5]
+    params['output_data'] = np_orig_data[1:,:4]
     params['delta'] = params['output_data'] - params['input_data'][:,:4]
 
     params['no_of_inputs'] = params['input_data'].shape[1]
@@ -30,25 +34,61 @@ def train(params: dict):
     if params['train_mode']:
         ensemble_ins.train_model(params['model_epochs'], True, params['min_model_epochs'])
     if params['test_mode']:
+
+        noise_level = params['load_model_dir'].split('/')[-1].split('_')[-3]
+        assert noise_level in params['data_dir'].split('/')[-1], "The model loaded is not trained on the loaded data..."
+        
         ensemble_ins.load_model(params['load_model_dir']) # will reset val and train data 
         for model_no, model in ensemble_ins.models.items():
+
+            start = 4000
+            steps = 1000
+            if params['pred_on_data'] == 'pred_on_train':
+                # for multi-step pred
+                first_input = ensemble_ins.rand_input_filtered_train[start,:]
+                full_input = ensemble_ins.rand_input_filtered_train
+                # for one-step pred
+                all_inputs = ensemble_ins.rand_input_filtered_train[start:start+steps,:]
+                orig_inputs = ensemble_ins.rand_input_train[start:start+steps,:4]
+                # common between both 
+                ground_truth = ensemble_ins.rand_output_train[start:start+steps,:]
+            elif params['pred_on_data'] == 'pred_on_val':
+                # for multi-step pred
+                first_input = ensemble_ins.rand_input_filtered_val[start,:]
+                full_input = ensemble_ins.rand_input_filtered_val 
+                # for one-step pred
+                all_inputs = ensemble_ins.rand_input_filtered_val[start:start+steps,:]
+                orig_inputs = ensemble_ins.rand_input_val[start:start+steps,:4]                
+                # common between both
+                ground_truth = ensemble_ins.rand_output_val[start:start+steps,:]   
+            elif params['pred_on_data'] == 'pred_on_test':
+                assert params['test_data_dir'] is not None, "You need to provide test data for testing..." 
+                assert noise_level in params['test_data_dir'].split('/')[-1], "The model loaded is not trained on the loaded data..."
+
+                filtered_input_data, input_data, output_data = read_test_csv(params['test_data_dir'], ensemble_ins.input_filter)
+                # for multi-step pred
+                first_input = filtered_input_data[start,:]
+                full_input = filtered_input_data
+                # for one-step pred
+                all_inputs = filtered_input_data[start:start+steps,:]
+                orig_inputs = input_data[start:start+steps,:4]
+                # common between both
+                ground_truth = output_data[start:start+steps,:]
+
+            pred_data = params['pred_on_data'].split('_')[-1] 
+
             if params['free_sim_mode']:
-                start = 1000
-                steps = 1000
-                ground_truth = ensemble_ins.rand_output_val[start:start+steps,:]
-                mu, upper_mu, lower_mu = model.get_next_state_reward_free_sim(ensemble_ins.rand_input_filtered_val[start,:], start,\
-                                                            steps, ensemble_ins.input_filter, ensemble_ins.rand_input_filtered_val)
+
+                mu, upper_mu, lower_mu = model.get_next_state_reward_free_sim(first_input, start,\
+                                                            steps, ensemble_ins.input_filter, full_input)
                 plot_many(mu.T, upper_mu.T, lower_mu.T, ground_truth.T,\
-                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred_{start}_{start+steps}_multistep.png")
+                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred_{start}_{start+steps}_multistep_{noise_level}_{pred_data}.png")
             else:
-                start = 1000
-                steps = 1000
-                ground_truth = ensemble_ins.rand_output_val[start:start+steps,:]
-                mu, logvar =  model.get_next_state_reward_one_step(ensemble_ins.rand_input_filtered_val[start:start+steps,:], \
+                mu, logvar =  model.get_next_state_reward_one_step(all_inputs, \
                                                         deterministic=True, return_mean=False) # normalized validation data
-                mu_unnorm, upper_mu_unnorm, lower_mu_unnorm =  ensemble_ins.calculate_bounds(mu, logvar, start, start+steps)
+                mu_unnorm, upper_mu_unnorm, lower_mu_unnorm =  ensemble_ins.calculate_bounds(mu, logvar, orig_inputs)
                 plot_many(mu_unnorm.T, upper_mu_unnorm.T, lower_mu_unnorm.T, ground_truth.T,\
-                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred_{start}_{start+steps}_onestep.png")
+                       no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred_{start}_{start+steps}_onestep_{noise_level}_{pred_data}.png")
 
     return 
 
@@ -67,6 +107,8 @@ def main():
     parser.add_argument('--test_mode', type=bool, default=False)
     parser.add_argument('--load_model_dir', type=str, default=None)
     parser.add_argument('--free_sim_mode', type=str, default=None)
+    parser.add_argument('--pred_on_data', type=str, choices=['pred_on_train', 'pred_on_val', 'pred_on_test'], default=None)
+    parser.add_argument('--test_data_dir', type=str, default=None, help='path to csv file containing testing data')
 
     args = parser.parse_args()
     params = vars(args)

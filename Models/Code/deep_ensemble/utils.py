@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import os 
 from pathlib import Path
+from numpy import genfromtxt
 import matplotlib.pyplot as plt
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -74,6 +75,21 @@ def prepare_data(input_data, input_filter):
     input_filtered = input_filter.filter(input_data)
     
     return input_filtered       
+
+def read_test_csv(path, input_filter):
+    
+    orig_data = genfromtxt(path, delimiter=',', skip_header=1, usecols=(1,2,3,4,7))
+
+    np_orig_data = np.array(orig_data)
+    np_orig_data[:,0] = np.mod(np_orig_data[:,0], 2*np.pi)
+
+    input_data = np_orig_data[:-1,:5]
+    output_data = np_orig_data[1:,:4]
+    delta = output_data - input_data[:,:4]
+
+    filtered_input_data = prepare_data(input_data, input_filter)
+
+    return filtered_input_data, input_data, output_data
 
 def check_or_make_folder(folder_path):
     """
