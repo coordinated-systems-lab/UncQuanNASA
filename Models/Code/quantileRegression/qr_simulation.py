@@ -112,17 +112,16 @@ def _check_x(
 
 
 def _feature_transform(
-    x: np.ndarray, feature_names: list
+    x: np.ndarray, feature_names: list, convert_theta: bool = True
 ) -> Tuple[np.ndarray, np.ndarray]:
-    # Convert theta
-    idx = feature_names.index("theta")
-    x[:, idx] = np.mod(x[:, idx], 2 * np.pi)
+    if convert_theta:
+        # Convert theta
+        idx = feature_names.index("theta")
+        x[:, idx] = np.mod(x[:, idx], 2 * np.pi)
 
     # x to constant
     keep_feats = ["theta", "theta_d", "x_d", "force_in", "alpha"]
     return x, np.array([i for i, f in enumerate(feature_names) if f in keep_feats])
-    # idx = feature_names.index("x")
-    # return x, np.delete(np.arange(x.shape[1]), idx)
 
 
 class QuantileRegressionSimulator:
@@ -155,6 +154,7 @@ class QuantileRegressionSimulator:
         alpha_dist_params: dict | None = None,
         random_state: Union[int, None] = None,
         smoother: str = "butterdiff",
+        convert_theta: bool = True,
     ):
         self.nrow = x.shape[0]
         self.n_feat = 2
@@ -244,6 +244,7 @@ class QuantileRegressionSimulator:
         self.freq = freq
         self.smoother = smoother
         self.model_params = model_params
+        self.convert_theta = convert_theta
 
     def train(self) -> List[lgb.Booster]:
         self.models = []
@@ -253,7 +254,9 @@ class QuantileRegressionSimulator:
             y = self.datasets[i].get_label()
 
             # feature transform
-            X, f_idx = _feature_transform(X, self.feature_names_ + ["alpha"])
+            X, f_idx = _feature_transform(
+                X, self.feature_names_ + ["alpha"], convert_theta=self.convert_theta
+            )
 
             # Train data
             dtrain = lgb.Dataset(X[:, f_idx], label=y, free_raw_data=False)
@@ -299,7 +302,9 @@ class QuantileRegressionSimulator:
             )
 
             # Feature transform
-            x, f_idx = _feature_transform(x, self.feature_names_ + ["alpha"])
+            x, f_idx = _feature_transform(
+                x, self.feature_names_ + ["alpha"], convert_theta=self.convert_theta
+            )
 
             # Make 2nd derivative predictions
             for i in range(self.n_feat):
@@ -317,3 +322,49 @@ class QuantileRegressionSimulator:
                 )
 
         return preds
+
+    def predict_single(self, X: pd.DataFrame, levels=list[int]) -> pd.DataFrame:
+        # Levels to quantiles
+        alpha = [(1 - lev / 100) / 2 for lev in levels]
+        q = alpha + [1 - a for a in alpha]
+        q_names = [f"{pref}_{lev}" for pref in ["lower", "upper"] for lev in levels]
+
+        # Convert X
+        x = _check_x(X, self.feature_names_)
+
+        # Make predictions
+        res_list = []
+        for q_, q_name in zip(q, q_names):
+            x_ = np.hstack((x, np.repeat(q_, x.shape[0]).reshape(-1, 1)))
+
+            # feature transform
+            x_, f_idx = _feature_transform(
+                x_, self.feature_names_ + ["alpha"], convert_theta=self.convert_theta
+            )
+
+            for i, model in enumerate(self.models):
+                var = ["theta", "x"][i]
+                tmp = pd.DataFrame()
+
+                # Make 2nd derivative predictions
+                p = model.predict(x_[:, f_idx])
+                tmp["pred"] = p
+                tmp["variable"] = f"{var}_d"
+                tmp["quantile"] = q_name
+                tmp["t"] = X.index
+                res_list.append(tmp.copy())
+
+                # Make/propogate first derivative predictions?
+                tmp["pred"] = self.dt * X[f"{var}_d"].to_numpy()
+                tmp["variable"] = var
+                tmp["quantile"] = q_name
+                tmp["t"] = X.index
+                res_list.append(tmp)
+        all_preds = pd.concat(res_list)
+
+        # Pivot wide
+        all_preds = pd.pivot_table(
+            all_preds, index=["variable", "t"], columns="quantile", values="pred"
+        ).reset_index()
+
+        return all_preds
