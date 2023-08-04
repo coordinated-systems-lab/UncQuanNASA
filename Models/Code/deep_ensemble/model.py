@@ -56,6 +56,7 @@ class Ensemble(object):
     def __init__(self, params):
 
         self.params = params
+        self.input_data_mod = params['input_data_mod']
         self.input_data = params['input_data']
         self.output_data = params['output_data']
         self.delta = params['delta']
@@ -92,7 +93,7 @@ class Ensemble(object):
         total_points = self.input_data.shape[0]
 
         for i in range(total_points):
-            self.input_filter.update(self.input_data[i,:])
+            self.input_filter.update(self.input_data_mod[i,:])
             #self.output_filter.update(self.output_data[i])
 
         return 
@@ -100,6 +101,7 @@ class Ensemble(object):
     def set_loaders(self):
 
         input_filtered = prepare_data(self.input_data, self.input_filter)
+        input_filtered_mod = prepare_data(self.input_data_mod, self.input_filter)
         #output_filtered = prepare_data(self.output_data, self.output_filter)
         self.train_size = int((1-self.train_val_ratio)*input_filtered.shape[0])
         self.val_size = input_filtered.shape[0] - self.train_size
@@ -110,11 +112,14 @@ class Ensemble(object):
         randperm = np.linspace(0, stop=(input_filtered.shape[0]-1), num=input_filtered.shape[0], dtype=int)
         randperm_train, randperm_val = randperm[:self.train_size], randperm[self.train_size:]
 
-        self.rand_input_train = self.input_data[randperm_train,:]
-        self.rand_input_val = self.input_data[randperm_val,:]
+        self.rand_input_train = self.input_data_mod[randperm_train,:]
+        self.rand_input_val = self.input_data_mod[randperm_val,:]
 
         self.rand_output_train = self.output_data[randperm_train,:]
         self.rand_output_val = self.output_data[randperm_val,:]
+
+        self.rand_input_filtered_mod_train = input_filtered_mod[randperm_train,:]
+        self.rand_input_filtered_mod_val = input_filtered_mod[randperm_val,:]
 
         self.rand_input_filtered_train = input_filtered[randperm_train,:]
         self.rand_input_filtered_val = input_filtered[randperm_val,:]
@@ -125,13 +130,13 @@ class Ensemble(object):
         batch_size = 256
 
         self.transition_loader = DataLoader(
-            EnsembleTransitionDataset(self.rand_input_filtered_train, self.rand_delta_filtered_train, n_models=self.num_models),
+            EnsembleTransitionDataset(self.rand_input_filtered_mod_train, self.rand_delta_filtered_train, n_models=self.num_models),
             shuffle=True,
             batch_size=batch_size,
             pin_memory=True
         )
         
-        validate_dataset = TransitionDataset(self.rand_input_filtered_val[-1000:], self.rand_delta_filtered_val[-1000:])
+        validate_dataset = TransitionDataset(self.rand_input_filtered_mod_val[-1000:], self.rand_delta_filtered_val[-1000:])
         sampler = SequentialSampler(validate_dataset)
         self.validation_loader = DataLoader(
             validate_dataset,
@@ -237,6 +242,8 @@ class Ensemble(object):
         print("Saving train and val data...")           
         data_state_dict = {'train_input_data': self.rand_input_filtered_train, 
                            'val_input_data': self.rand_input_filtered_val,
+                           'train_input_data_mod': self.rand_input_filtered_mod_train,
+                           'val_input_data_mod': self.rand_input_filtered_mod_val,
                            'train_out_data': self.rand_delta_filtered_train,
                            'val_out_data': self.rand_delta_filtered_val,
                            'input_filter': self.input_filter}   
@@ -282,6 +289,8 @@ class Ensemble(object):
         data_state_dict = pickle.load(open(model_dir + '/model_data.pkl', 'rb'))
         self.rand_input_filtered_train = data_state_dict['train_input_data']
         self.rand_input_filtered_val = data_state_dict['val_input_data']
+        self.rand_input_filtered_mod_train = data_state_dict['train_input_data_mod']
+        self.rand_input_filtered_mod_val = data_state_dict['val_input_data_mod']
         self.rand_delta_filtered_train = data_state_dict['train_out_data']
         self.rand_delta_filtered_val = data_state_dict['val_out_data'] 
         self.input_filter = data_state_dict['input_filter']
@@ -289,13 +298,13 @@ class Ensemble(object):
         batch_size = 256
 
         self.transition_loader = DataLoader(
-            EnsembleTransitionDataset(self.rand_input_filtered_train, self.rand_delta_filtered_train, n_models=self.num_models),
+            EnsembleTransitionDataset(self.rand_input_filtered_mod_train, self.rand_delta_filtered_train, n_models=self.num_models),
             shuffle=True,
             batch_size=batch_size,
             pin_memory=True
         )
         
-        validate_dataset = TransitionDataset(self.rand_input_filtered_val, self.rand_delta_filtered_val)
+        validate_dataset = TransitionDataset(self.rand_input_filtered_mod_val, self.rand_delta_filtered_val)
         sampler = SequentialSampler(validate_dataset)
         self.validation_loader = DataLoader(
             validate_dataset,

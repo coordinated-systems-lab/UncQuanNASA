@@ -7,6 +7,7 @@ from model import Ensemble
 from utils import plot_one, plot_many, read_test_csv
 import sys
 import random
+import copy
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -18,8 +19,10 @@ def train(params: dict):
     orig_data = genfromtxt(params['data_dir'], delimiter=',', skip_header=1, usecols=(1,2,3,4,7))
 
     np_orig_data = np.array(orig_data)
-    np_orig_data[:,0] = np.mod(np_orig_data[:,0], 2*np.pi)
+    np_orig_data_mod = copy.deepcopy(np_orig_data)
+    np_orig_data_mod[:,0] = np.mod(np_orig_data_mod[:,0], 2*np.pi)
 
+    params['input_data_mod'] = np_orig_data_mod
     params['input_data'] = np_orig_data[:-1,:5]
     params['output_data'] = np_orig_data[1:,:4]
     params['delta'] = params['output_data'] - params['input_data'][:,:4]
