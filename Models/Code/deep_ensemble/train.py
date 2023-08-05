@@ -48,10 +48,10 @@ def train(params: dict):
             steps = 1000
             if params['pred_on_data'] == 'pred_on_train':
                 # for multi-step pred
-                first_input = ensemble_ins.rand_input_filtered_train[start,:]
-                full_input = ensemble_ins.rand_input_filtered_train
+                first_input = ensemble_ins.rand_input_filtered_mod_train[start,:]
+                full_input = ensemble_ins.rand_input_train
                 # for one-step pred
-                all_inputs = ensemble_ins.rand_input_filtered_train[start:start+steps,:]
+                all_inputs = ensemble_ins.rand_input_filtered_mod_train[start:start+steps,:]
                 orig_inputs = ensemble_ins.rand_input_train[start:start+steps,:4]
                 # common between both 
                 ground_truth = ensemble_ins.rand_output_train[start:start+steps,:]
@@ -83,7 +83,7 @@ def train(params: dict):
             if params['free_sim_mode']:
 
                 mu, upper_mu, lower_mu = model.get_next_state_reward_free_sim(first_input, start,\
-                                                            steps, ensemble_ins.input_filter, full_input)
+                                                            steps, ensemble_ins.input_filter_mod, full_input)
                 plot_many(mu.T, upper_mu.T, lower_mu.T, ground_truth.T,\
                        no_of_outputs=4, save_dir="deep_ensemble/", file_name=f"model_{model_no}_pred_{start}_{start+steps}_multistep_{noise_level}_{pred_data}.png")
             else:
