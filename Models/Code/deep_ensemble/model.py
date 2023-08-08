@@ -87,7 +87,7 @@ class Ensemble(object):
         #self.output_filter = MeanStdevFilter(self.output_dim)
 
         self._model_id = "Model_seed{}_{}_{}".format(params['seed'],\
-                                                datetime.datetime.now().strftime('%Y_%m_%d_%H-%M-%S'), 'new_mod_det_nonoise_train')
+                                                datetime.datetime.now().strftime('%Y_%m_%d_%H-%M-%S'), 'new_mod_high_noise_train')
 
     def calculate_mean_var(self) -> None:
 
@@ -153,7 +153,7 @@ class Ensemble(object):
         self.current_best_losses = np.zeros(          # params['num_models'] = 7
             self.params['num_models']) + sys.maxsize  # weird hack (YLTSI), there's almost surely a better way...
         self.current_best_weights = [None] * self.params['num_models']
-        val_improve = deque(maxlen=7) #6 originally
+        val_improve = deque(maxlen=157) #6 originally
         lr_lower = False
         min_model_epochs = 0 if not min_model_epochs else min_model_epochs
 
@@ -203,7 +203,7 @@ class Ensemble(object):
                     epoch_diff = i + 1 - best_epoch
                     plural = 's' if epoch_diff > 1 else ''
                     print('No improvement detected this epoch: {} Epoch{} since last improvement.'.format(epoch_diff,plural))
-                if len(val_improve) > 6:
+                if len(val_improve) > 156:
                     if not any(np.array(val_improve)[1:]):  # If no improvement in the last 5 epochs
                         # assert val_improve[0]
                         if (i >= min_model_epochs):
@@ -319,7 +319,7 @@ class Ensemble(object):
             pin_memory=True
         )
 
-    def calculate_bounds(self, mu:torch.Tensor, logvar:torch.Tensor, last_time_step: np.ndarray):
+    def calculate_bounds(self, mu:torch.Tensor, logvar:torch.Tensor, last_time_step: np.ndarray, ci: float):
         """
         mu: unnormalized predictions in tensor
         logvar: predicted logvar in tensor
@@ -328,8 +328,8 @@ class Ensemble(object):
             mu = mu.reshape(1,-1)
             logvar = logvar.reshape(1,-1)
 
-        upper_mu =  mu + torch.mul(logvar.exp().sqrt(), 1.96)
-        lower_mu =  mu - torch.mul(logvar.exp().sqrt(), 1.96)
+        upper_mu =  mu + torch.mul(logvar.exp().sqrt(), ci)
+        lower_mu =  mu - torch.mul(logvar.exp().sqrt(), ci)
 
         mu = mu.detach().cpu().numpy()
         upper_mu = upper_mu.detach().cpu().numpy()
@@ -361,7 +361,7 @@ class Model(nn.Module):
         return self.model.get_next_state_reward_one_step(input, deterministic, return_mean) 
 
     def get_next_state_reward_free_sim(self, input: torch.Tensor, start :int, steps:int, input_filter:MeanStdevFilter,\
-                                        full_input:torch.Tensor, deterministic=True, return_mean=False):
+                                        full_input:torch.Tensor, ci: float, deterministic=True, return_mean=False):
         """
         input: Initial state to start free simulation 
         steps: No of time steps to simulation aka rollout horizon    
@@ -370,7 +370,7 @@ class Model(nn.Module):
         deterministic: True should be preferable 
         return_mean: False if deterministic is True  
         """
-        return self.model.get_next_state_reward_free_sim(input, start, steps, input_filter, full_input, deterministic, return_mean) 
+        return self.model.get_next_state_reward_free_sim(input, start, steps, input_filter, full_input, ci, deterministic, return_mean) 
     
     def _train_model_forward(self, x_batch):
         self.model.train()    # TRAINING MODE
@@ -499,7 +499,7 @@ class BayesianNeuralNetwork(nn.Module):
         return mu, logvar
     
     def get_next_state_reward_free_sim(self, input:torch.Tensor, start :int, steps:int, input_filter:MeanStdevFilter,\
-                                        full_input:torch.Tensor, deterministic=True, return_mean=False): # aka multi-step transition 
+                                        full_input:torch.Tensor, ci: float, deterministic=True, return_mean=False): # aka multi-step transition 
         input = input.reshape(1,-1)
         mu = np.zeros((steps, input.shape[1]-1)) # we are not predicting control input so -1
         upper_mu = np.zeros((steps, input.shape[1]-1))
@@ -520,9 +520,9 @@ class BayesianNeuralNetwork(nn.Module):
 
             # return unnormalized upper and lower bounds along with mu
             if step == 0: 
-                mu[step,:], upper_mu[step,:], lower_mu[step,:] = self.calculate_bounds(step, delta, logvar, full_input_torch[start,:4].reshape(1,-1))
+                mu[step,:], upper_mu[step,:], lower_mu[step,:] = self.calculate_bounds(step, delta, logvar, full_input_torch[start,:4].reshape(1,-1), ci=ci)
             else:     
-                mu[step,:], upper_mu[step,:], lower_mu[step,:] = self.calculate_bounds(step, delta, logvar, mu[step-1,:].reshape(1,-1))
+                mu[step,:], upper_mu[step,:], lower_mu[step,:] = self.calculate_bounds(step, delta, logvar, mu[step-1,:].reshape(1,-1), ci=ci)
 
             #if return_mean:
             #    mu_orig[step,:] = delta_orig + full_input_torch[start+step,:4].reshape(1,-1)
@@ -543,7 +543,7 @@ class BayesianNeuralNetwork(nn.Module):
 
         return mu, upper_mu, lower_mu
     
-    def calculate_bounds(self, step: int, delta:torch.Tensor, logvar:torch.Tensor, input_unnorm:torch.Tensor):
+    def calculate_bounds(self, step: int, delta:torch.Tensor, logvar:torch.Tensor, input_unnorm:torch.Tensor, ci: float):
         """
         mu: unnormalized delta predictions in tensor
         logvar: predicted logvar in tensor
@@ -552,8 +552,8 @@ class BayesianNeuralNetwork(nn.Module):
             delta = delta.reshape(1,-1)
             logvar = logvar.reshape(1,-1)
 
-        upper_delta =  delta + torch.mul(logvar.exp().sqrt(), 1.96)
-        lower_delta =  delta - torch.mul(logvar.exp().sqrt(), 1.96)
+        upper_delta =  delta + torch.mul(logvar.exp().sqrt(), ci)
+        lower_delta =  delta - torch.mul(logvar.exp().sqrt(), ci)
 
         delta = delta.detach().cpu().numpy()
         upper_delta = upper_delta.detach().cpu().numpy()

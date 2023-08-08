@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from numpy import genfromtxt
 import matplotlib.pyplot as plt
+import copy
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -81,13 +82,14 @@ def read_test_csv(path, input_filter):
     orig_data = genfromtxt(path, delimiter=',', skip_header=1, usecols=(1,2,3,4,7))
 
     np_orig_data = np.array(orig_data)
-    np_orig_data[:,0] = np.mod(np_orig_data[:,0], 2*np.pi)
+    np_orig_data_mod = copy.deepcopy(np_orig_data)
+    np_orig_data_mod[:,0] = np.mod(np_orig_data_mod[:,0], 2*np.pi)
 
     input_data = np_orig_data[:-1,:5]
     output_data = np_orig_data[1:,:4]
     delta = output_data - input_data[:,:4]
 
-    filtered_input_data = prepare_data(input_data, input_filter)
+    filtered_input_data = prepare_data(np_orig_data_mod, input_filter)
 
     return filtered_input_data, input_data, output_data
 
@@ -142,7 +144,8 @@ def plot_many(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground
         main_dir = main_dir + save_dir
 
     plt.savefig(main_dir+file_name)
-    plt.show()        
+    plt.close()
+    #plt.show()        
 
 def plot_one(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground_truth: np.ndarray, file_name:str, save_dir:str=None):
 
@@ -180,4 +183,5 @@ def plot_one(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground_
         main_dir = main_dir + save_dir
 
     plt.savefig(main_dir+file_name)
-    plt.show()    
+    plt.close()
+    #plt.show()    
