@@ -140,6 +140,9 @@ if __name__ == "__main__":
     # Read in predictions
     preds = pd.read_csv(filename)
 
+    print(preds.shape)
+    sys.exit
+
     # Perform data checks
     preds = check_data(preds)
 
