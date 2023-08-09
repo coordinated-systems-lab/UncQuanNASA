@@ -111,9 +111,9 @@ def create_actuals_lookup(datapath: Path) -> pd.DataFrame:
             # Read in
             tmp = pd.read_csv(file, usecols=["t"] + var_names)
 
-            # Target changes depending on objective
-            if eval_mode == "single":
-                tmp[var_names] = tmp[var_names].shift(-1) - tmp[var_names]
+            # # Target changes depending on objective
+            # if eval_mode == "single":
+            #     tmp[var_names] = tmp[var_names].shift(-1) - tmp[var_names]
 
             # Reset time to 0; filter to first 10 seconds
             tmp["t"] -= tmp["t"].min()
@@ -139,9 +139,6 @@ if __name__ == "__main__":
 
     # Read in predictions
     preds = pd.read_csv(filename)
-
-    print(preds.shape)
-    sys.exit
 
     # Perform data checks
     preds = check_data(preds)
