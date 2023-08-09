@@ -153,7 +153,9 @@ class QuantileRegressionSimulator:
         smoothing_perc: float = 0.8,
         alpha_dist_params: dict | None = None,
         random_state: Union[int, None] = None,
-        smoother: str = "butterdiff",
+        smoother: str = "meandiff",
+        smooth_iter: int = 4,
+        smooth_window_size: int = 15,
         convert_theta: bool = True,
     ):
         self.nrow = x.shape[0]
@@ -181,21 +183,22 @@ class QuantileRegressionSimulator:
                 idx = self.feature_names_.index(f"{feat}{suf}")
 
                 if smooth_derv_est:
-                    sp = _est_smoothing_params(
-                        x[:, idx], dt=dt, freq=freq, smoother=smoother
-                    )
+                    # self.sp = _est_smoothing_params(
+                    #     x[:, idx], dt=dt, freq=freq, smoother=smoother
+                    # )
+                    self.sp = [smooth_window_size, smooth_iter]
                     if smoothing_samples is None:
                         xhat[i : (i + 2), :, feat_idx] = smooth_series(
                             x[:, idx],
                             dt=dt,
-                            params=sp,
+                            params=self.sp,
                             smoother=smoother,
                         ).T
                     else:
                         xhat[i : (i + 2), :, feat_idx] = sample_smooth_series(
                             x[:, idx],
                             dt=dt,
-                            params=sp,
+                            params=self.sp,
                             rng=self.rng,
                             n_samples=smoothing_samples,
                             perc_sample=smoothing_perc,
@@ -348,14 +351,17 @@ class QuantileRegressionSimulator:
 
                 # Make 2nd derivative predictions
                 p = model.predict(x_[:, f_idx])
-                tmp["pred"] = p
+                tmp["pred"] = X[f"{var}_d"].to_numpy() + p
                 tmp["variable"] = f"{var}_d"
                 tmp["quantile"] = q_name
                 tmp["t"] = X.index
                 res_list.append(tmp.copy())
 
                 # Make/propogate first derivative predictions?
-                tmp["pred"] = self.dt * X[f"{var}_d"].to_numpy()
+                tmp["pred"] = X[var].to_numpy() + self.dt * (
+                    X[f"{var}_d"].to_numpy() + p
+                )
+                # tmp["pred"] = X[var].to_numpy() + self.dt * X[f"{var}_d"].to_numpy()
                 tmp["variable"] = var
                 tmp["quantile"] = q_name
                 tmp["t"] = X.index

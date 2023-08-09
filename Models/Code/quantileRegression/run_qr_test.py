@@ -18,7 +18,7 @@ evalpath = Path.cwd() / "../../../Results/evaluation/predictions"
 model = QuantileRegressionSimulator
 
 params: dict[str, Any] = {
-    "name": "qr_exp21",  # Custom unique name used for saving predictions, parameters
+    "name": "qr_preds22",  # Custom unique name used for saving predictions, parameters
     "model_name": model.__name__,
     "model_params": {
         "m_factor": 10,
@@ -30,13 +30,14 @@ params: dict[str, Any] = {
         },
         "dt": 0.01,
         "model_params": {
-            "num_iterations": 1000,
+            "num_iterations": 2000,
             "learning_rate": 1e-3,
         },
         "smooth_derv_est": True,
         "smoothing_samples": None,
         "smoothing_perc": 1.0,
         "smoother": "meandiff",
+        "smooth_window_size": 5,
         "convert_theta": True,
     },
     # Which datasets
@@ -51,14 +52,14 @@ params: dict[str, Any] = {
     "valid_train": True,
     "valid_valid": True,
     "valid_test": True,
-    "train_seconds": 100,  # Use first __ seconds of data to train
+    "train_seconds": 400,  # Use first __ seconds of data to train
     "val_train_start": 400,  # Start val after __ seconds, same as train_seconds if None
     "val_train_seconds": 0,  # Use __ seconds of remaining data to val, None = all
     "n_sims": 100,
     "levels": [50, 80, 95],
     "var_names": ["theta", "x", "theta_d", "x_d"],
     "eval_modes": ["single", "multi"],
-    "random_state": 6,
+    "random_state": 7,
 }
 
 if __name__ == "__main__":
