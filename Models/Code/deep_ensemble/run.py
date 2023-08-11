@@ -55,7 +55,8 @@ for noise in noises:
             for stdot in res.stdout.splitlines():
                 print(stdot)
             for stder in res.stderr.splitlines():
-                print(stder)    
+                print(stder) 
+            sys.exit()       
             #print(f"Standard Error is: {res.stderr.splitlines()}")
             #sys.exit()
             #all_data[noise_idx,name_idx,eval_mode_idx,0,:,:,:], all_data[noise_idx,name_idx,eval_mode_idx,1,:,:,:] = res.stdout[0], res.stdout[1]

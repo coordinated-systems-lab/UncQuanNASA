@@ -116,15 +116,15 @@ def plot_many(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground
     gs = fig.add_gridspec(no_of_outputs, hspace=0.15)
     ax = gs.subplots(sharex=True)
 
-    fig.set_figheight(7*no_of_outputs)
-    fig.set_figwidth(18)
+    fig.set_figheight(13*no_of_outputs)
+    fig.set_figwidth(30)
 
-    plt.rc('font', size=22)          # controls default text sizes
-    plt.rc('axes', titlesize=22)     # fontsize of the axes title
-    plt.rc('axes', labelsize=25)    # fontsize of the x and y labels
-    plt.rc('xtick', labelsize=22)    # fontsize of the tick labels
-    plt.rc('ytick', labelsize=22)    # fontsize of the tick labels
-    plt.rc('legend', fontsize=22)    # legend fontsize
+    plt.rc('font', size=41)          # controls default text sizes
+    plt.rc('axes', titlesize=41)     # fontsize of the axes title
+    plt.rc('axes', labelsize=63)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=46)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=46)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=47)    # legend fontsize
     plt.rc('figure', titlesize=12)  # fontsize of the figure title
 
     for i in range(no_of_outputs):
@@ -133,8 +133,12 @@ def plot_many(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground
         k1, = ax[i].plot(no_of_inputs, mu[i,:].reshape(-1,), "k", markersize=6)
         ax[i].grid(True)
         ax[i].set_ylabel(labels[i])
+        ax[i].spines['top'].set_linewidth(1.5)
+        ax[i].spines['right'].set_linewidth(1.5) # set_visible(False)
+        ax[i].spines['bottom'].set_linewidth(1.5)
+        ax[i].spines['left'].set_linewidth(1.5)
 
-    ax[no_of_outputs-1].set_xlabel('Inputs')
+    ax[no_of_outputs-1].set_xlabel('time [s]')
     ax[0].legend(('Confidence Interval', 'Ground Truth', 'Predictions'),\
                   bbox_to_anchor=(0,1.01,0.9,0.2), mode='expand', loc='lower center', ncol=4,\
                       borderaxespad=0, shadow=False)
@@ -143,7 +147,7 @@ def plot_many(mu: np.ndarray, upper_mu: np.ndarray, lower_mu: np.ndarray, ground
     if save_dir: 
         main_dir = main_dir + save_dir
 
-    plt.savefig(main_dir+file_name)
+    plt.savefig(main_dir+file_name, bbox_inches='tight')
     plt.close()
     #plt.show()        
 
